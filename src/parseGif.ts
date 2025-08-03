@@ -1,7 +1,6 @@
 import { GifFrame, GraphicControlExtension, ParsedGif } from './types';
 
 export const parseGif = (buffer: ArrayBuffer): ParsedGif => {
-  // read buffer using DataView or Uint8Array
   const view = new DataView(buffer);
 
   const header = parseHeader(view, 0);
@@ -109,30 +108,26 @@ const parseFrames = (view: DataView, bufferLength: number, offset: number): GifF
   let currentGCE: GraphicControlExtension | undefined; // Keep track of the last seen GCE
 
   while (offset < bufferLength) {
-
-    const blockType = view.getUint8(offset);
+    let blockType = view.getUint8(offset);
 
     if (blockType === 0x21) {
-      // Extension Introducer
-      const label = view.getUint8(offset + 1);
+      let label = view.getUint8(offset + 1);
       switch (label) {
         case 0xf9: {
-          // Graphic Control Extension
           const gceResult = parseGraphicControlExtension(view, offset);
-          currentGCE = gceResult.gce; // Store the GCE for the next image frame
+          currentGCE = gceResult.gce;
           offset = gceResult.nextOffset;
           break;
         }
-        default: {
-          // Skip unknown extension blocks
+        default: { // todo: implement other extension blocks
+          // Skip unknown extension blocks for now
           offset = skipExtensionBlock(view, offset);
           break;
         }
       }
     } else if (blockType === 0x2c) {
       const frame: GifFrame = {
-        // Initialize default GCE or use the last parsed one
-        gce: currentGCE || { // Use the stored GCE, or a default if none was seen
+        gce: currentGCE || {
           disposalMethod: 0,
           userInputFlag: false,
           transparencyFlag: false,
@@ -150,10 +145,9 @@ const parseFrames = (view: DataView, bufferLength: number, offset: number): GifF
       Object.assign(frame, imageContentResult.imageContent);
       offset = imageContentResult.nextOffset;
       
-      // Push the frame after we have all its data
       frames.push(frame);
     } else if (blockType === 0x3b) {
-      break; // Trailer → end of file
+      break;
     } else {
       throw new Error(`Unknown block type at offset ${offset}: ${blockType}`);
     }
@@ -224,13 +218,15 @@ const parseImageContent = (
     localColorTable = parseColorTable(view, localColorTableFlag, sizeOfLocalColorTable, ptr);
     ptr += sizeOfLocalColorTable * 3;
   }
+  const imageDataChunks: number[] = [];
 
   const lzwMinCodeSize = view.getUint8(ptr);
+  imageDataChunks.push(lzwMinCodeSize);
   ptr += 1;
 
-  const imageDataChunks: number[] = [];
   while (true) {
     const blockSize = view.getUint8(ptr);
+    imageDataChunks.push(blockSize);
     ptr += 1;
     if (blockSize === 0) {
       break;
@@ -255,7 +251,7 @@ const parseImageContent = (
 };
 
 const skipExtensionBlock = (view: DataView, offset: number): number => {
-  let ptr = offset + 2; // skip introducer & label
+  let ptr = offset + 2;
   let blockSize: number;
 
   do {
